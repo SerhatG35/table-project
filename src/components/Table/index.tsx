@@ -1,6 +1,5 @@
-import { ReactNode, createContext, useContext, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
-  GroupingState,
   useReactTable,
   getCoreRowModel,
   getGroupedRowModel,
@@ -9,18 +8,14 @@ import {
   flexRender,
 } from "@tanstack/react-table";
 import { TableContext } from "src/context/TableContext";
-
-export const ColumnContext = createContext({} as any);
+import { ColumnContext } from "src/context/ColumnContext";
+import { RiArrowDownSFill, RiArrowRightSFill } from "react-icons/ri";
+import styled from "styled-components";
 
 type Props<T extends object> = {
   data: T[];
   columns?: ColumnDef<any, any>[];
   children: ReactNode;
-};
-
-export const useCellData = () => {
-  const info = useContext(ColumnContext);
-  return { data: info.getValue() };
 };
 
 const Table = <T extends object>({
@@ -30,7 +25,7 @@ const Table = <T extends object>({
 }: Props<T>) => {
   const [columnsState, setColumnsState] =
     useState<ColumnDef<any, any>[]>(columns);
-  const [grouping, setGrouping] = useState<GroupingState>([]);
+  const [grouping, setGrouping] = useState<string[]>([]);
 
   const memoizedData = useMemo(() => data, [data]);
 
@@ -40,25 +35,32 @@ const Table = <T extends object>({
     state: {
       grouping,
     },
-    onGroupingChange: setGrouping,
     getExpandedRowModel: getExpandedRowModel(),
     getGroupedRowModel: getGroupedRowModel(),
     getCoreRowModel: getCoreRowModel(),
   });
 
+  const ref = useRef(() => {});
+
   const contextValue = useMemo(
     () => ({
       getTableMethods: () => table,
+      subToTableInitialize: (callback: any) => (ref.current = callback),
       addHeader: () => null,
       addCell: () => null,
+      setGrouping: (group: string) => {
+        setGrouping([group]);
+      },
       addColumn: (newColumn: ColumnDef<any, any>) => {
         const helperResponse = {
           ...newColumn,
-          cell: (info: any) => (
-            <ColumnContext.Provider value={info}>
-              {(newColumn.cell as ReactNode) ?? info.getValue()}
-            </ColumnContext.Provider>
-          ),
+          cell: (info: any) => {
+            return (
+              <ColumnContext.Provider value={info}>
+                {(newColumn.cell as ReactNode) ?? info.getValue()}
+              </ColumnContext.Provider>
+            );
+          },
         };
 
         setColumnsState((c) => {
@@ -80,16 +82,24 @@ const Table = <T extends object>({
     [table]
   );
 
+  useEffect(() => {
+    columnsState.length > 0 && ref.current();
+  }, [columnsState]);
+
   return (
     <TableContext.Provider value={contextValue}>
       {children}
-      <table>
+      <StyledTable>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 return (
-                  <th key={header.id} style={{ width: header.getSize() }}>
+                  <TH
+                    width={header.getSize()}
+                    key={header.id}
+                    colSpan={header.colSpan}
+                  >
                     {header.isPlaceholder ? null : (
                       <div>
                         {flexRender(
@@ -98,7 +108,7 @@ const Table = <T extends object>({
                         )}
                       </div>
                     )}
-                  </th>
+                  </TH>
                 );
               })}
             </tr>
@@ -106,11 +116,52 @@ const Table = <T extends object>({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => {
-            return (
+            return row.getIsGrouped() ? (
+              <GroupRow
+                onClick={row.getToggleExpandedHandler()}
+                background={row.getIsExpanded() ? "#a696d6" : "#cdc3eb"}
+                key={row.id}
+              >
+                <td style={{ padding: "10px" }} colSpan={columnsState.length}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <div style={{ display: "flex", fontSize: "1.5rem" }}>
+                      {row.getIsExpanded() ? (
+                        <RiArrowDownSFill />
+                      ) : (
+                        <RiArrowRightSFill />
+                      )}
+                    </div>
+                    <div style={{ marginLeft: "1rem" }}>
+                      {row.groupingValue as string}
+                    </div>
+                    <div style={{ marginLeft: "0.2rem" }}>
+                      ({row.subRows.length})
+                    </div>
+                  </div>
+                </td>
+              </GroupRow>
+            ) : (
               <tr key={row.id}>
                 {row.getVisibleCells().map((cell) => {
                   return (
-                    <td key={cell.id} width={cell.column.getSize()}>
+                    <td
+                      {...{
+                        key: cell.id,
+                        style: {
+                          background: cell.getIsGrouped()
+                            ? "#0aff0082"
+                            : cell.getIsPlaceholder()
+                            ? "#fff"
+                            : "#eaeaea",
+                          textAlign:
+                            typeof cell.getValue() === "number"
+                              ? "right"
+                              : "left",
+                          border: "2px solid #8d8d8d",
+                        },
+                      }}
+                      width={cell.column.getSize() ?? 100}
+                    >
                       {cell.getIsPlaceholder()
                         ? null
                         : flexRender(
@@ -124,9 +175,28 @@ const Table = <T extends object>({
             );
           })}
         </tbody>
-      </table>
+      </StyledTable>
     </TableContext.Provider>
   );
 };
 
 export default Table;
+
+const TH = styled.th<{ width?: number }>`
+  border: 2px solid #8d8d8d;
+  width: ${({ width }) => width ?? undefined};
+`;
+
+const StyledTable = styled.table`
+  border-collapse: collapse;
+`;
+
+const GroupRow = styled.tr<{ cursor?: string; background?: string }>`
+  background: ${({ background }) => background ?? undefined};
+  white-space: nowrap;
+  cursor: ${({ cursor }) => cursor ?? undefined};
+  font-size: 1.1rem;
+  border: 2px solid;
+  border-bottom: 2px solid;
+  cursor: pointer;
+`;

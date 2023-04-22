@@ -2,16 +2,17 @@ import { ColumnDef } from "@tanstack/react-table";
 import { FC, useState, useEffect, useMemo, PropsWithChildren } from "react";
 import { TableContext, useTableContext } from "src/context/TableContext";
 
-export const Column: FC<PropsWithChildren<ColumnDef<any, any>>> = ({
+type ColumnType = ColumnDef<any, any>;
+
+export const Column: FC<PropsWithChildren<ColumnType>> = ({
   children,
   ...column
 }) => {
-  const { addColumn, getTableMethods } = useTableContext();
+  const { addColumn, subToTableInitialize, getTableMethods, setGrouping } =
+    useTableContext();
 
   const [header, setHeader] = useState<ColumnDef<["header"], any> | string>("");
-  const [cell, setCell] = useState<ColumnDef<["header"], any> | undefined>(
-    undefined
-  );
+  const [cell, setCell] = useState<any>(undefined);
 
   useEffect(() => {
     if (header) {
@@ -19,13 +20,16 @@ export const Column: FC<PropsWithChildren<ColumnDef<any, any>>> = ({
         ...column,
         ...(cell ? { cell } : {}),
         header: header,
-      } as ColumnDef<any, any>);
+      } as ColumnType);
     }
   }, [addColumn, cell, column, header]);
 
   const contextValue = useMemo(
     () => ({
+      subToTableInitialize,
       getTableMethods,
+      setGrouping,
+      addColumn,
       addHeader: (newHeader: ColumnDef<["header"], any> | string) => {
         setHeader(newHeader);
       },
@@ -33,11 +37,11 @@ export const Column: FC<PropsWithChildren<ColumnDef<any, any>>> = ({
         setCell(cell);
       },
     }),
-    [getTableMethods]
+    [addColumn, getTableMethods, setGrouping, subToTableInitialize]
   );
 
   return (
-    <TableContext.Provider value={contextValue as any}>
+    <TableContext.Provider value={contextValue}>
       {children}
     </TableContext.Provider>
   );
